@@ -1,0 +1,132 @@
+# -*- coding: utf-8 -*-
+import pathlib
+
+SEC5 = '''## 五、PostgreSQL 表设计
+
+### 5.1 三表 ER 关系图
+
+```
+┌──────────────────────────────────┐
+│            sessions              │
+│  id            UUID  PK          │
+│  title         VARCHAR           │
+│  status        VARCHAR           │  recording / completed
+│  language      VARCHAR           │
+│  audio_object_key   VARCHAR      │  MinIO 路径
+│  transcript_object_key VARCHAR   │  MinIO 路径
+│  audio_duration_sec FLOAT        │  冗余字段，避免 SUM
+│  speaker_count INT               │  冗余字段，避免 COUNT
+│  created_at / completed_at       │
+└──────────────┬───────────────────┘
+               │ session_id（逻辑关联，无外键）
+┌──────────────▼───────────────────┐
+│            speakers              │
+│  id            UUID  PK          │
+│  session_id    UUID  (索引)       │
+│  speaker_label VARCHAR           │  speaker_0, speaker_1…
+│  display_name  VARCHAR (可空)    │  用户编辑：张某某
+│  embedding     JSON              │  声纹备份，主存 Milvus
+│  UNIQUE (session_id, label)      │
+└──────────────┬───────────────────┘
+               │ speaker_id（逻辑关联，无外键）
+┌──────────────▼───────────────────┐
+│        transcript_segments       │
+│  id            UUID  PK          │
+│  session_id    UUID  (索引)       │
+│  speaker_id    UUID  (索引,可空)  │
+│  start_time    FLOAT             │  秒，精度 3 位
+│  end_time      FLOAT             │
+│  text          TEXT              │  转写文本
+│  sequence_no   INT               │  保证排序正确
+│  confidence    FLOAT             │  置信度 0~1
+│  words         JSON              │  词级时间戳（Whisper）
+│  is_final      BOOL              │  区分中间结果和最终结果
+└──────────────────────────────────┘
+```
+
+### 5.2 为何不使用数据库外键？
+
+| 维度 | 有外键 | 无外键（本项目选择）|
+|------|--------|--------------------|
+| 写入性能 | 每次 INSERT 需锁定父表行验证 | 直接写入无锁 |
+| 高并发 | 行锁竞争严重 | 线性扩展 |
+| 分库分表 | 跨库外键不可维护 | 无障碍 |
+| 一致性保证 | 数据库强制 | 业务代码逻辑保证 |
+| 删除/归档 | 需级联处理 | 灵活独立操作 |
+
+### 5.3 索引策略
+
+```sql
+-- speakers 表
+CREATE UNIQUE INDEX ON speakers (session_id, speaker_label);
+
+-- transcript_segments 表
+CREATE INDEX ON transcript_segments (session_id, sequence_no);  -- 顺序读全部转写
+CREATE INDEX ON transcript_segments (session_id, start_time);   -- 播放定位时间区间
+CREATE INDEX ON transcript_segments (speaker_id);               -- 按说话人统计
+```
+
+---
+
+## 六、存储层设计
+
+### 6.1 三层存储架构
+
+| 🗄️ 层次 | 系统 | 存储内容 | 访问方式 |
+|---------|------|---------|----------|
+| **元数据层** | PostgreSQL | 会话状态 / 说话人 / 片段文本+时间戳 | SQLAlchemy asyncpg |
+| **文件层** | MinIO | 原始录音 WAV + 转写 TXT/JSON | 预签名 URL 直接下载 |
+| **向量层** | Milvus（可选）| 文本语义向量 384维 | REST 语义搜索 |
+
+### 6.2 MinIO 存储结构
+
+```
+Bucket: speech-audio
+  └── {session_id}/
+        └── raw_audio.wav          ← 完整原始录音（含静音，会话结束后上传）
+
+Bucket: speech-text
+  └── {session_id}/
+        ├── transcript.txt         ← 纯文本，按说话人分段
+        └── transcript.json        ← 结构化 JSON（含 speaker/时间戳/置信度）
+```
+
+> ⚠️ 注意：MinIO 存储的是**完整原始录音**（含静音段），非 VAD 切割后的纯语音。
+> 时间轴与 `transcript_segments.start_time` 完全对齐，前端可按时间戳精确定位播放。
+
+### 6.3 Milvus 集合设计
+
+```
+集合名：speech_transcripts
+
+字段：
+  id            INT64     PK auto_id
+  session_id    VARCHAR   按会话过滤
+  speaker_label VARCHAR   按说话人过滤
+  text          VARCHAR   原始文本
+  embedding     FLOAT_VECTOR(384)  MiniLM-L12-v2 语义向量
+
+索引：HNSW  metric=COSINE  M=16  ef_construction=200
+分区：按 session_id 分区，单会话查询不扫全表
+```
+
+### 6.4 数据流向总结
+
+```
+原始音频（每帧）
+    │
+    ├──► _raw_audio_chunks（内存累积）
+    │        └── 会话结束 → get_raw_audio_wav() → MinIO
+    │
+    └──► VAD 处理
+             └── 检测到语音段
+                     ├──► ASR → 文本 → PostgreSQL + Milvus
+                     └──► 声纹 → 聚类 → PostgreSQL (speakers)
+```
+
+---
+'''
+
+pathlib.Path('d:/B-Work/PyCharm/2025/speech_proj/scripts/_arch_sec5.txt').write_text(SEC5, encoding='utf-8')
+print('sec5 len:', len(SEC5))
+print('done')

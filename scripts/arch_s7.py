@@ -1,0 +1,66 @@
+# -*- coding: utf-8 -*-
+import pathlib
+f = pathlib.Path(r'd:/B-Work/PyCharm/2025/speech_proj/ARCHITECTURE.md')
+t = f.read_text(encoding='utf-8')
+t += '''
+---
+
+## \u4e03\u3001\u6a21\u578b\u9009\u578b\u51b3\u7b56
+
+### 7.1 ASR \u9009\u578b
+
+| \u6307\u6807 | paraformer-zh (\u9ed8\u8ba4) | faster-whisper v3 (\u53ef\u9009) |
+|------|----------------------|---------------------------|
+| \u4e2d\u6587\u51c6\u786e\u7387 | SOTA CER~3% | CER~5% |
+| \u63a8\u7406\u901f\u5ea6 RTF | 0.05~0.1 (GPU) | 0.2~0.4 (GPU) |
+| \u663e\u5b58\u5360\u7528 | ~2GB | ~6GB |
+| \u591a\u8bed\u8a00 | \u4e2d\u6587\u4e3a\u4e3b | 99\u79cd\u8bed\u8a00 |
+| \u67b6\u6784 | \u975e\u81ea\u56de\u5f52(\u4e00\u6b21\u524d\u5411) | \u81ea\u56de\u5f52(\u9010token) |
+| HF Token | \u4e0d\u9700\u8981 | \u4e0d\u9700\u8981 |
+| \u8bcd\u7ea7\u65f6\u95f4\u6233 | \u4e0d\u652f\u6301 | \u652f\u6301 |
+
+\u901f\u5ea6\u5dee\u5f02\u672c\u8d28:
+  Whisper(\u81ea\u56de\u5f52):     \u751f\u62104\u4e2a\u5b57 = 4\u6b21\u524d\u5411\u4f20\u64ad
+  paraformer(\u975e\u81ea\u56de\u5f52): \u751f\u62104\u4e2a\u5b57 = 1\u6b21\u524d\u5411\u4f20\u64ad  \u5feb 5~10\u500d
+
+\u5207\u6362\u65b9\u5f0f: .env \u8bbe\u7f6e ASR_BACKEND=funasr \u6216 whisper\uff0c\u65e0\u9700\u6539\u4ee3\u7801
+
+### 7.2 VAD \u9009\u578b
+
+| | Silero VAD (\u9009\u7528) | WebRTC VAD | pyannote VAD |
+|---|---|---|---|
+| \u5ef6\u8fdf | 32ms\u7a97\u53e3 | 10ms | \u5e27\u7ea7 |
+| \u51c6\u786e\u7387 | \u9ad8 | \u4e2d | \u6781\u9ad8 |
+| CPU\u5f00\u9500 | 1ms/\u5e27 | \u6781\u4f4e | \u9700GPU |
+| \u6d41\u5f0f | \u662f | \u662f | \u5426 |
+
+\u65ad\u53e5\u7b56\u7565\u53cc\u4fdd\u9669:
+  1. \u9759\u97f3\u65ad\u53e5: \u9759\u97f3\u6301\u7eed > VAD_SILENCE_DURATION_MS (\u9ed8\u8ba4800ms)
+  2. \u6700\u5927\u65f6\u957f: \u5355\u6bb5\u8d85\u8fc7 VAD_MAX_SEGMENT_DURATION (\u9ed8\u8ba430s) \u5f3a\u5236\u622a\u65ad
+
+### 7.3 \u8bf4\u8bdd\u4eba\u8bc6\u522b\u9009\u578b
+
+| | ERes2Net (\u9009\u7528) | pyannote 3.1 |
+|---|---|---|
+| \u58f0\u7eb9\u8d28\u91cf | \u9ad8 | \u6781\u9ad8 |
+| \u901f\u5ea6 | \u5feb | \u6162 |
+| HF Token | \u4e0d\u9700\u8981 | \u9700\u8981\u7533\u8bf7 |
+| \u90e8\u7f72 | modelscope\u76f4\u63a5\u4e0b\u8f7d | \u9700\u7533\u8bf7\u8bbf\u95ee\u6743\u9650 |
+
+\u58f0\u7eb9\u805a\u7c7b\u6d41\u7a0b:
+```
+\u97f3\u9891\u7247\u6bb5 -> ERes2Net -> 192\u7ef4\u58f0\u7eb9\u5d4c\u5165
+    -> \u4f59\u5f26\u76f8\u4f3c\u5ea6\u5339\u914d\u5386\u53f2\u58f0\u7eb9
+        \u76f8\u4f3c\u5ea6 > 0.55 -> \u5f52\u5165\u5df2\u6709 speaker_N  (\u540c\u4e00\u4eba)
+        \u76f8\u4f3c\u5ea6 < 0.55 -> \u65b0\u5efa speaker_N+1    (\u65b0\u4eba)
+```
+
+### 7.4 \u6587\u672c\u5411\u91cf\u5316 (Milvus \u8bed\u4e49\u68c0\u7d22)
+
+\u9009\u7528 paraphrase-multilingual-MiniLM-L12-v2:
+- \u652f\u6301\u4e2d\u6587\uff0c384\u7ef4\uff0cCPU\u63a8\u7406~5ms/\u53e5
+- \u4e0d\u4e0eASR/\u58f0\u7eb9\u6a21\u578b\u7ade\u4e89GPU\u663e\u5b58
+- fire-and-forget\u5f02\u6b65\u5199\u5165\uff0c\u4e0d\u5f71\u54cd\u5b9e\u65f6\u63a8\u9001\u5ef6\u8fdf
+'''
+f.write_text(t, encoding='utf-8')
+print('s7', len(t))

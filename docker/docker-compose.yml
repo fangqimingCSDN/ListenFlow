@@ -1,0 +1,100 @@
+# ============================================================
+# 实时语音转写系统 - Docker Compose
+# 启动: docker compose up -d
+# ============================================================
+version: "3.9"
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: speech_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: speech_db
+      POSTGRES_USER: speech_user
+      POSTGRES_PASSWORD: speech_pass_123
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U speech_user -d speech_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── MinIO 对象存储 ───────────────────────────────────────────
+  minio:
+    image: minio/minio:latest
+    container_name: speech_minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin123
+    volumes:
+      - minio_data:/data
+    ports:
+      - "9000:9000"   # S3 API
+      - "9001:9001"   # Web 管理控制台 http://localhost:9001
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ── Qdrant 向量数据库（可选）────────────────────────────────
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: speech_qdrant
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+    ports:
+      - "6333:6333"   # REST API
+      - "6334:6334"   # gRPC
+    profiles:
+      - vector  # 默认不启动，需要向量库时: docker compose --profile vector up -d
+
+  # ── 后端服务 ─────────────────────────────────────────────────
+  backend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.backend
+    container_name: speech_backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://speech_user:speech_pass_123@postgres:5432/speech_db
+      MINIO_ENDPOINT: minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin123
+      MINIO_SECURE: "false"
+      WHISPER_DEVICE: auto
+      LOG_LEVEL: INFO
+    volumes:
+      - model_cache:/root/.cache    # AI 模型缓存持久化
+      - ../backend:/app/backend     # 开发模式热更新
+    ports:
+      - "8000:8000"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    # 若无 GPU 则注释掉上面 deploy.resources 部分
+
+volumes:
+  postgres_data:
+  minio_data:
+  qdrant_data:
+  model_cache:
