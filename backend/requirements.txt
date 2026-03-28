@@ -22,6 +22,8 @@ accelerate>=0.30.0
 sentencepiece>=0.2.0
 protobuf>=4.25.0
 onnxruntime>=1.18.0
+addict>=2.4.0  # modelscope 依赖
+datasets==2.21.0 # HuggingFace datasets
 
 # faster-whisper: 多语言，设置 ASR_BACKEND=whisper 时使用
 # 比原版 Whisper 快 4x（CTranslate2），GPU/CPU 均支持
@@ -40,6 +42,7 @@ silero-vad==5.1
 # ── 说话人识别 ───────────────────────────────────────────────
 # ERes2Net 声纹提取已含在 modelscope 中
 # OnlineSpeakerCluster 为项目内实现（无额外依赖）
+simplejson>=3.19.0  # modelscope 间接依赖
 
 # ── 音频处理 ─────────────────────────────────────────────────
 numpy>=1.26.0
@@ -56,11 +59,12 @@ psycopg2-binary==2.9.9
 
 # ── 向量数据库（ENABLE_VECTOR_STORE=true 时需要）────────────
 # Milvus：推荐生产级，支持十亿级向量，分布式，HNSW 索引
-pymilvus==2.4.3
+# 注意：pymilvus 2.4.3 有问题，使用不带 milvus-lite 依赖的版本
+pymilvus>=2.3,<2.4
 # 文本向量化：多语言 MiniLM，支持中文，384 维，CPU 快速推理
-sentence-transformers==3.0.1
+sentence-transformers>=2.2,<3.1
 # Qdrant：轻量备选
-qdrant-client==1.9.1
+qdrant-client>=1.9,<2.0
 
 # ── MinIO 对象存储 ───────────────────────────────────────────
 minio==7.2.7

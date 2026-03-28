@@ -163,13 +163,10 @@ class SpeechSession:
             return b""
 
         all_bytes = b"".join(self._raw_audio_chunks)
-        try:
-            audio = np.frombuffer(all_bytes, dtype=np.float32)
-        except Exception:
-            audio = np.frombuffer(all_bytes, dtype=np.int16).astype(np.float32) / 32768.0
-
+        # 前端发的是 int16 PCM，直接按 int16 解析写 WAV，无须转换
+        audio_int16 = np.frombuffer(all_bytes, dtype=np.int16)
         buf = io.BytesIO()
-        sf.write(buf, audio, SAMPLE_RATE, format="WAV", subtype="PCM_16")
+        sf.write(buf, audio_int16, SAMPLE_RATE, format="WAV", subtype="PCM_16")
         return buf.getvalue()
 
     # ── 文本导出 ──────────────────────────────────────────────────────────────

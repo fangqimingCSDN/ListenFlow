@@ -105,7 +105,7 @@ class FunASRBackend:
             t0 = time.perf_counter()
             result = self._model.generate(
                 input=audio * 32768.0,
-                batch_size_s=300,
+                batch_size_s=1,  
                 language="zh",
             )
             elapsed = time.perf_counter() - t0

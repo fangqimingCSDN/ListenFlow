@@ -107,10 +107,12 @@ app = FastAPI(
 )
 
 # CORS
+# 开发环境放开所有来源；生产环境在 .env 中精确配置 CORS_ORIGINS
+_dev = settings.app_env == "development"
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_credentials=True,
+    allow_origins=["*"] if _dev else settings.cors_origins,
+    allow_credentials=False if _dev else True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
