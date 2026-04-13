@@ -12,7 +12,7 @@ services:
     restart: always
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: speech_pass_123
+      POSTGRES_PASSWORD: tarena
       POSTGRES_DB: speech_db
       PGDATA: /var/lib/postgresql/data/pgdata
     command: >

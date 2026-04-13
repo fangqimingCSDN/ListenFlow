@@ -31,6 +31,7 @@ from .api.sessions import router as sessions_router
 from .api.ws_handler import websocket_handler
 
 
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -44,12 +45,21 @@ async def lifespan(app: FastAPI):
     logger.info("实时语音转写系统 启动中...")
     logger.info(f"环境: {settings.app_env}")
 
+    # 检查数据库是否存在，不存在则创建
+    try:
+        await ensure_database_exists()
+        logger.info("PostgreSQL 数据库检查完成")
+    except Exception as e:
+        logger.error(f"PostgreSQL 数据库检查失败: {e}")
+        raise
+
     # 初始化数据库表
     try:
         await init_db()
-        logger.info("PostgreSQL 初始化完成")
+        logger.info("PostgreSQL 表结构初始化完成")
     except Exception as e:
-        logger.error(f"PostgreSQL 初始化失败: {e}")
+        logger.error(f"PostgreSQL 表结构初始化失败: {e}")
+        raise
 
     # 预加载 AI 模型（启动时一次性加载，避免首次请求延迟）
     logger.info("预加载 AI 模型（ASR + 声纹）...")
@@ -84,6 +94,60 @@ async def lifespan(app: FastAPI):
     # ── 关闭 ──────────────────────────────────────────────────────────────
     cleanup_task.cancel()
     logger.info("系统正在关闭...")
+
+
+async def ensure_database_exists():
+    """确保 PostgreSQL 数据库存在，不存在则创建"""
+    import asyncpg
+    from urllib.parse import urlparse
+    
+    # 从配置中解析数据库URL
+    # 注意: SQLAlchemy异步引擎用 "postgresql+asyncpg://" scheme，
+    #       但 asyncpg 原生连接只认标准 "postgresql://"，所以需要替换
+    db_url = settings.database_url
+    parsed_url = urlparse(db_url.replace("postgresql+asyncpg://", "postgresql://"))
+    
+    # 提取连接信息
+    username = parsed_url.username
+    password = parsed_url.password
+    host = parsed_url.hostname
+    port = parsed_url.port or 5432
+    database = parsed_url.path.lstrip('/')
+    
+    try:
+        # 连接到默认的 postgres 数据库
+        conn = await asyncpg.connect(
+            user=username,
+            password=password,
+            host=host,
+            port=port,
+            database='postgres',  # 连接到默认数据库
+            timeout=10
+        )
+        
+        logger.info(f"成功连接到 PostgreSQL 服务 ({host}:{port})")
+        
+        try:
+            # 检查数据库是否存在
+            exists = await conn.fetchval(
+                "SELECT 1 FROM pg_database WHERE datname = $1",
+                database
+            )
+            
+            if not exists:
+                logger.info(f"数据库 {database} 不存在，正在创建...")
+                # 创建数据库
+                await conn.execute(f'CREATE DATABASE "{database}"')
+                logger.info(f"数据库 {database} 创建成功")
+            else:
+                logger.info(f"数据库 {database} 已存在")
+        finally:
+            await conn.close()
+    except Exception as e:
+        logger.error(f"数据库连接失败: {e}")
+        logger.error("请确保 PostgreSQL 服务已启动并运行在正确的端口")
+        logger.error(f"配置的连接信息: {host}:{port}, 数据库: {database}")
+        raise
 
 
 async def _cleanup_loop():
